@@ -3,6 +3,7 @@
 namespace SilverStripe\Snapshots;
 
 use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DB;
 use SilverStripe\ORM\HasManyList;
 use SilverStripe\ORM\Queries\SQLSelect;
 use SilverStripe\ORM\ValidationException;
@@ -382,4 +383,49 @@ class Snapshot extends DataObject
 
         return $this;
     }
+
+    public function getActivityFeed()
+    {
+        return $this->getOriginItem()->getActivityFeed();
+    }
+
+    public function getPublishedItems()
+    {
+        $itemTable = DataObject::getSchema()->tableName(SnapshotItem::class);
+        $snapshotTable = DataObject::getSchema()->tableName(Snapshot::class);
+        $currentlyPublished = $this->Items()
+            ->filter([
+                'WasPublished' => true,
+            ])
+            ->column('ObjectHash');
+        $previousSnapshot = Snapshot::get()->filter([
+            'ID:LessThan' => $this->ID,
+            'ObjectHash' => $currentlyPublished,
+        ])
+            ->sort('ID', 'DESC')
+            ->innerJoin($itemTable, "\"$itemTable\".\"SnapshotID\" = \"$snapshotTable\".\"ID\"")
+            ->first();
+        if (!$previousSnapshot) {
+            return null;
+        }
+        $previouslyDraft = $previousSnapshot->Items()
+            ->filter([
+                'WasDraft' => true
+            ])
+            ->column('ObjectHash');
+        $publishedHashes = array_intersect($previouslyDraft, $currentlyPublished);
+        if (empty($publishedHashes)) {
+            return null;
+        }
+
+        $items = $this->Items()->filter([
+            'ObjectHash' => $publishedHashes,
+        ]);
+
+        return array_map(function ($i) {
+            return $i->getItem()->Title;
+        }, $items->toArray());
+
+    }
 }
+

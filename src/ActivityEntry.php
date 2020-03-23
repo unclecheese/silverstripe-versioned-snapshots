@@ -69,7 +69,8 @@ class ActivityEntry extends ArrayData
             'Subject' => $itemObj,
             'Action' => $flag,
             'Owner' => null,
-            'Date' => $item->obj('Created')->Nice(),
+            'Date' => $item->Created,
+            'AuthorName' => $item->Snapshot()->Author()->getName(),
         ]);
     }
 
