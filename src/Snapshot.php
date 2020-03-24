@@ -2,6 +2,7 @@
 
 namespace SilverStripe\Snapshots;
 
+use SilverStripe\Core\Injector\Injector;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\DB;
 use SilverStripe\ORM\HasManyList;
@@ -386,34 +387,69 @@ class Snapshot extends DataObject
 
     public function getActivityFeed()
     {
-        return $this->getOriginItem()->getActivityFeed();
-    }
-
-    public function getPublishedItems()
-    {
         $itemTable = DataObject::getSchema()->tableName(SnapshotItem::class);
         $snapshotTable = DataObject::getSchema()->tableName(Snapshot::class);
+
+        $snapshot = Snapshot::get()
+            ->filter([
+                'OriginHash' => $this->OriginHash,
+                'WasPublished' => true,
+                'ID:LessThan' => $this->ID,
+            ])
+            ->innerJoin($itemTable, "\"$itemTable\".\"SnapshotID\" = \"$snapshotTable\".\"ID\"")
+            ->sort('ID', 'DESC')
+            ->first();
+
+        if (!$snapshot) {
+            return null;
+        }
+
+
+        $minOrigin = $snapshot->getOriginItem();
+        $maxOrigin = $this->getOriginItem();
+        if (!$maxOrigin) {
+            return null;
+        }
+        $dataObj = $maxOrigin->getItem();
+        if (!$dataObj) {
+            return null;
+        }
+        return $dataObj->getActivityFeed(
+            $minOrigin ? $minOrigin->Version : null,
+            $maxOrigin->Version
+        );
+    }
+
+    public function getPublishedSummary()
+    {
+        $itemTable = DataObject::getSchema()->tableName(SnapshotItem::class);
         $currentlyPublished = $this->Items()
             ->filter([
                 'WasPublished' => true,
             ])
             ->column('ObjectHash');
-        $previousSnapshot = Snapshot::get()->filter([
-            'ID:LessThan' => $this->ID,
-            'ObjectHash' => $currentlyPublished,
-        ])
-            ->sort('ID', 'DESC')
-            ->innerJoin($itemTable, "\"$itemTable\".\"SnapshotID\" = \"$snapshotTable\".\"ID\"")
-            ->first();
-        if (!$previousSnapshot) {
+        if (empty($currentlyPublished)) {
             return null;
         }
-        $previouslyDraft = $previousSnapshot->Items()
-            ->filter([
-                'WasDraft' => true
-            ])
-            ->column('ObjectHash');
-        $publishedHashes = array_intersect($previouslyDraft, $currentlyPublished);
+        $subquery = SQLSelect::create()
+            ->setFrom("\"$itemTable\" AS \"Compare\"")
+            ->setSelect(['MAX("SnapshotID")'])
+            ->setWhere([
+                '"SnapshotID" != ?',
+                "\"ObjectHash\" = \"Current\".\"ObjectHash\"",
+            ]);
+        $query = SQLSelect::create()
+            ->setFrom("\"$itemTable\" AS \"Current\"")
+            ->setSelect(['"ObjectHash"'])
+            ->addWhere([
+                sprintf('"SnapshotID" = (%s)', $subquery->sql()) => $this->ID,
+                "\"ObjectHash\" IN (" . DB::placeholders($currentlyPublished) . ")" => $currentlyPublished,
+                '"WasDraft" = ?' => 1,
+            ]);
+
+        $previousQuery = $query->execute();
+        $previousHashes = $previousQuery->column('ObjectHash');
+        $publishedHashes = array_intersect($previousHashes, $currentlyPublished);
         if (empty($publishedHashes)) {
             return null;
         }
