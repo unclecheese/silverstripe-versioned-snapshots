@@ -22,6 +22,8 @@ class ActivityEntry extends ArrayData
 
     const UNPUBLISHED = 'UNPUBLISHED';
 
+    const UNCHANGED = 'UNCHANGED';
+
     public static function createFromSnapshotItem(SnapshotItem $item)
     {
         $itemObj = $item->getItem();
@@ -39,7 +41,19 @@ class ActivityEntry extends ArrayData
         } elseif ($item->WasCreated) {
             $flag = self::CREATED;
         } else {
-            $flag = self::MODIFIED;
+            $previousItem = SnapshotItem::get()->filter([
+                'ObjectHash' => $item->ObjectHash,
+                'ID:LessThan' => $item->ID,
+            ])
+                ->sort('ID DESC')
+                ->first();
+            if (!$previousItem) {
+                $flag = self::MODIFIED;
+            } else {
+                $flag = $previousItem->Version === $item->Version
+                    ? self::UNCHANGED
+                    : self::MODIFIED;
+            }
         }
 
         // If the items been deleted then we want to get the last version of it

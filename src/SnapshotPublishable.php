@@ -707,4 +707,11 @@ class SnapshotPublishable extends RecursivePublishable
         return $list;
     }
 
+    /**
+     * @return string
+     */
+    public function getSnapshotHash(): string
+    {
+        return static::hashObjectForSnapshot($this->owner);
+    }
 }

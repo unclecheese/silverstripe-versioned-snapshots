@@ -385,39 +385,47 @@ class Snapshot extends DataObject
         return $this;
     }
 
-    public function getActivityFeed()
+    public function getActivityFeed(string $originHash)
     {
         $itemTable = DataObject::getSchema()->tableName(SnapshotItem::class);
         $snapshotTable = DataObject::getSchema()->tableName(Snapshot::class);
 
-        $snapshot = Snapshot::get()
-            ->filter([
-                'OriginHash' => $this->OriginHash,
-                'WasPublished' => true,
-                'ID:LessThan' => $this->ID,
+        $baseSnapshotID = SQLSelect::create()
+            ->setSelect(["\"SnapshotID\""])
+            ->setFrom($itemTable)
+            ->addWhere([
+                '"ObjectHash" = ?' => $originHash,
+                '"WasPublished" = ?' => 1,
+                '"SnapshotID" < ?' => $this->ID,
             ])
+            ->setOrderBy("\"SnapshotID\" DESC")
+            ->execute()
+            ->value();
+
+        if (!$baseSnapshotID) {
+            return null;
+        }
+
+        $items = Snapshot::get()->filter([
+            'ID:GreaterThan' => $baseSnapshotID,
+            'ID:LessThanOrEqual' => $this->ID,
+            'ObjectHash' => $originHash,
+        ])
             ->innerJoin($itemTable, "\"$itemTable\".\"SnapshotID\" = \"$snapshotTable\".\"ID\"")
-            ->sort('ID', 'DESC')
-            ->first();
-
-        if (!$snapshot) {
-            return null;
+            ->relation('Items')
+            ->sort('ID DESC');
+        $activity = [];
+        foreach ($items as $item) {
+            if ($item->Children()->exists()) {
+                continue;
+            }
+            $entry = ActivityEntry::createFromSnapshotItem($item);
+            if ($entry->Action !== ActivityEntry::UNCHANGED) {
+                $activity[] = $entry;
+            }
         }
 
-
-        $minOrigin = $snapshot->getOriginItem();
-        $maxOrigin = $this->getOriginItem();
-        if (!$maxOrigin) {
-            return null;
-        }
-        $dataObj = $maxOrigin->getItem();
-        if (!$dataObj) {
-            return null;
-        }
-        return $dataObj->getActivityFeed(
-            $minOrigin ? $minOrigin->Version : null,
-            $maxOrigin->Version
-        );
+        return $activity;
     }
 
     public function getPublishedSummary()
