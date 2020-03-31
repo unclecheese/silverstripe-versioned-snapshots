@@ -416,7 +416,7 @@ class Snapshot extends DataObject
             ->sort('ID DESC');
         $activity = [];
         foreach ($items as $item) {
-            if ($item->Children()->exists()) {
+            if ($item->ObjectClass === SnapshotEvent::class) {
                 continue;
             }
             $entry = ActivityEntry::createFromSnapshotItem($item);

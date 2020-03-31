@@ -674,6 +674,11 @@ class SnapshotPublishable extends RecursivePublishable
                 "\"$itemTable\".\"ID\"" => "ASC",
             ]);
 
+        // Filter out the origin
+        $items = $items->where([
+            "\"$itemTable\".\"ObjectHash\" != ?" => static::hashObjectForSnapshot($this->owner),
+        ]);
+
         return $items;
     }
     /**

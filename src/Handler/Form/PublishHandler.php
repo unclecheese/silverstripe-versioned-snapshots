@@ -6,6 +6,7 @@ namespace SilverStripe\Snapshots\Handler\Form;
 use SilverStripe\EventDispatcher\Event\EventContextInterface;
 use SilverStripe\Forms\Form;
 use SilverStripe\ORM\DataObject;
+use SilverStripe\Security\Security;
 use SilverStripe\Snapshots\Snapshot;
 use SilverStripe\Snapshots\SnapshotHasher;
 use SilverStripe\Versioned\ChangeSet;
@@ -30,6 +31,10 @@ class PublishHandler extends Handler
         $snapshot = Snapshot::create();
         $snapshot->applyOrigin($record);
         $snapshot->addOwnershipChain($record);
+        $currentUser = Security::getCurrentUser();
+        $snapshot->AuthorID = $currentUser
+            ? (int) $currentUser->ID
+            : 0;
 
         // Get the most recent change set to find out what was published
         $changeSet = ChangeSet::get()->filter([

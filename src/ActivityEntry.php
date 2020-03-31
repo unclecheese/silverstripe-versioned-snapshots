@@ -30,8 +30,6 @@ class ActivityEntry extends ArrayData
 
         if ($itemObj !== null && $itemObj instanceof SnapshotEvent) {
             $flag = null;
-        } elseif ($item->WasPublished) {
-            $flag = self::PUBLISHED;
         } elseif ($item->Parent()->exists()) {
             $flag = $item->WasDeleted ? self::REMOVED : self::ADDED;
         } elseif ($item->WasDeleted) {
@@ -48,11 +46,11 @@ class ActivityEntry extends ArrayData
                 ->sort('ID DESC')
                 ->first();
             if (!$previousItem) {
-                $flag = self::MODIFIED;
+                $flag = $item->WasPublished ? self::PUBLISHED : self::MODIFIED;
             } else {
                 $flag = $previousItem->Version === $item->Version
                     ? self::UNCHANGED
-                    : self::MODIFIED;
+                    : ($item->WasPublished ? self::PUBLISHED : self::MODIFIED);
             }
         }
 
